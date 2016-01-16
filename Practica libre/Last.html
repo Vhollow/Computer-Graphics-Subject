@@ -1,0 +1,626 @@
+﻿<html><head>
+<meta charset="utf-8">
+<title>WebGL - Letra</title>
+<style>
+        body{ background-color: grey; }
+      canvas{ background-color: white;
+              border: 1px solid black; }
+
+</style>
+<script src="./glMatrix/dist/gl-matrix-min.js"></script>
+<script src="./lib/webgl-utils.js"></script>
+<script src="./lib/webgl-debug.js"></script>
+<script src="./lib/cuon-utils.js"></script>
+<script src="./lib/cuon-matrix.js"></script>
+<script>
+
+  // ****************** Variables Globales
+  var   gl = null,
+        canvas = null,
+        glProgram = null,
+        fragmentShader = null,
+        vertexShader = null;
+  var   positionLocatAttrib =null,
+        colorLocation = null,
+        colorLocatAttrib = null,
+        triColorBuffer =null,
+        triVerticeBuffer = null,
+        traslacionLocat = null,
+        IndexVerticeBuffer = null,
+        norm_Buffer = null,
+        normalLocat = null;
+  var tx,ty,tz;
+  var aspect;
+  var translation=[0.0,0.0,0.0];
+  var anglex=0.0;
+  var anglexRad=0.0;
+  var angley=0.0;
+  var angleyRad=0.0;
+  var anglez=0.0;
+  var anglezRad=0.0;
+  var matTra,matRotx,matRoty,matRotz,matPer,matMv,matLook;
+  var Matrix;
+  var uMatrix,uPerspective,uMovement;
+
+  var cubeVertexTextureCoordBuffer= null;
+        
+
+      
+/********************* 1. INIT WEBGL **************************************/ 
+      function initWebGL()
+      {
+        canvas = document.getElementById("canvas");  
+        
+        //gl = canvas.getContext("webgl");          
+        gl = canvas.getContext("experimental-webgl");
+                
+        if(gl)
+        {
+          setupWebGL();
+          initShaders();
+          //initTexture();
+          setupBuffersAndDraw();
+          drawScene();  
+        } 
+        else{  
+          alert(  "El navegador no soporta WEBGL.");
+        }
+      }
+      /********************* 2.setupWEBGL **************************************/ 
+      function setupWebGL()
+      {
+        tx= document.getElementById("x");
+        ty= document.getElementById("y");
+        tz= document.getElementById("z");
+        anglex=document.getElementById("anglex");
+        angley=document.getElementById("angley");
+        anglez=document.getElementById("anglez");
+        //Pone el color de fondo a verde ---para 2d no funciona
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);  
+        gl.clear(gl.COLOR_BUFFER_BIT); 
+        aspect=canvas.width/canvas.height; 
+        gl.enable(gl.CULL_FACE);
+        
+        //Crea un viewport del tamaño del canvas
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+      /********************* 3. INIT SHADER **************************************/ 
+      function initShaders()
+      {
+       // Esta función inicializa los shaders
+       
+        //1.Obtengo la referencia de los shaders 
+        var fs_source = document.getElementById('fragment-shader').innerHTML;
+        var vs_source = document.getElementById('vertex-shader').innerHTML;
+
+        //2. Compila los shaders  
+        vertexShader = makeShader(vs_source, gl.VERTEX_SHADER);
+        fragmentShader = makeShader(fs_source, gl.FRAGMENT_SHADER);
+        
+          ///3. Crea un programa
+          glProgram = gl.createProgram();
+        
+        //4. Adjunta al programa cada shader
+          gl.attachShader(glProgram, vertexShader);
+          gl.attachShader(glProgram, fragmentShader);
+          gl.linkProgram(glProgram);
+
+        if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) {
+           alert("No se puede inicializar el Programa .");
+          }
+        
+        //5. Usa el programa
+        gl.useProgram(glProgram);
+      }
+     /********************* 3.1. MAKE SHADER **************************************/ 
+      function makeShader(src, type)
+      {
+        //Compila cada  shader
+        var shader = gl.createShader(type);
+        gl.shaderSource(shader, src);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+              alert("Error de compilación del shader: " + gl.getShaderInfoLog(shader));
+          }
+        return shader;
+      }
+
+     /********************* 4 SETUP BUFFERS  **************************************/ 
+      function setupBuffersAndDraw()
+      {  
+        var u_LightColor = gl.getUniformLocation(glProgram, 'u_LightColor');
+        var u_LightDirection = gl.getUniformLocation(glProgram, 'u_LightDirection');
+        //Defino el color y la dirección de la luz difusa. No lo he definido en el vertex shader como las otras para ver como se pasaria de esta forma.
+        
+        gl.uniform3f(u_LightColor, 1.0, 1.0, 1.0);
+        //gl.uniform3f(u_ambientColor, 1.0, 1.0, 1.0);
+        //gl.uniform3f(u_specColor, 1.0, 0.0, 0.0);
+
+        var lightDirection = new Vector3([0.0, 3.0, 4.0]);
+        lightDirection.normalize();     // Normalize
+        gl.uniform3fv(u_LightDirection, lightDirection.elements);
+
+
+        //vertices.Hay algunos repetidos para poder asignarles una normal distinta segun en que cara esten(si no no puede hacerse)
+          var triVertices = [  
+        //0 cara delante 
+          -0.4,0.0,0.8,
+          0.4,0.0,0.8,
+          0.4,0.4,0.8,
+          -0.4,0.4,0.8,
+        //4 cara derecha
+          0.8,0.0,-0.4,
+          0.8,0.0,0.4,
+          0.8,0.4,0.4,
+          0.8,0.4,-0.4,
+        //8 cara detras
+          -0.4,0.0,-0.8,
+          0.4,0.0,-0.8,
+          0.4,0.4,-0.8,
+          -0.4,0.4,-0.8,
+        //12 cara izquierda
+          -0.8,0.0,-0.4,
+          -0.8,0.0,0.4,
+          -0.8,0.4,0.4,
+          -0.8,0.4,-0.4,
+        //central 16
+          0.0,0.2,0.0,
+        //delante-derecha 17
+          0.4,0.0,0.8,//1
+          0.4,0.4,0.8,//2
+          0.8,0.0,0.4,//5
+          0.8,0.4,0.4,//6
+        //delante-izquierda 21
+          -0.4,0.0,0.8,//0
+          -0.4,0.4,0.8,//3
+          -0.8,0.0,0.4,//13
+          -0.8,0.4,0.4,//14
+        //detras-derecha 25
+          0.8,0.0,-0.4,//4
+          0.8,0.4,-0.4,//7
+          0.4,0.0,-0.8,//9
+          0.4,0.4,-0.8,//10
+        //detras-izquierda 29
+          -0.4,0.0,-0.8,//8
+          -0.4,0.4,-0.8,//11
+          -0.8,0.0,-0.4,//12
+          -0.8,0.4,-0.4,//15
+        //otras-arriba 33
+          0.4,0.4,0.8,//2
+          -0.4,0.4,0.8,//3
+          0.8,0.4,0.4,//6
+          0.8,0.4,-0.4,//7
+          0.4,0.4,-0.8,//10
+          -0.4,0.4,-0.8,//11
+          -0.8,0.4,0.4,//14
+          -0.8,0.4,-0.4,//15
+        //pared
+          -3.0,0.0,-1.5,
+          3.0,0.0,-1.5,
+          3.0,2.0,-1.5,
+          -3.0,2.0,-1.5,
+        //suelo
+          -3.0,0.0,-1.5,
+          3.0,0.0,-1.5,
+          -3.0,0.0,1.5,
+          3.0,0.0,1.5,
+        ];
+        //buffer vertices
+       triVerticeBuffer = gl.createBuffer();
+       gl.bindBuffer(gl.ARRAY_BUFFER, triVerticeBuffer);
+       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triVertices), gl.STATIC_DRAW); 
+
+        var caras=[
+        //pared
+          41,42,44,
+          44,42,43,
+        //suelo
+          45,48,46,
+          45,47,48,
+        //arriba
+          38,40,16,
+          40,39,16,
+          39,34,16,
+          34,33,16,
+          33,35,16,
+          35,36,16,
+          36,37,16,
+          37,38,16,
+        //delante
+          0,1,3,
+          3,1,2,
+        //derecha
+          6,5,4,
+          6,4,7,
+        //detras
+          8,11,9,
+          11,10,9,
+        //izquierda
+          15,12,13,
+          13,14,15,
+        //--------
+          18,17,19,//delante-derecha
+          18,19,20,
+          24,23,21,//delante-izquierda
+          24,21,22,
+          26,25,27,//detras-derecha
+          26,27,28,
+          30,29,31,//detras-izquierda
+          30,31,32,
+        ];
+
+        //BUFFER PARA POSICIONES
+       IndexVerticeBuffer = gl.createBuffer();
+       IndexVerticeBuffer.number_vertex_points=caras.length;
+       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexVerticeBuffer);
+       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(caras), gl.STATIC_DRAW); 
+
+
+        //Busca dónde debe ir la posicion de los vértices en el programa.
+        positionLocatAttrib = gl.getAttribLocation(glProgram, "a_VertexPosition");
+        gl.enableVertexAttribArray(positionLocatAttrib);
+        gl.bindBuffer(gl.ARRAY_BUFFER, triVerticeBuffer);
+        gl.vertexAttribPointer(positionLocatAttrib, 3, gl.FLOAT, false, 0, 0);
+        //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexVerticeBuffer);
+
+        var triVerticeColors = [ 
+        
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,//
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+        0.5,0.5,0.5,
+
+        0.2,0.2,0.2,
+        0.2,0.2,0.2,
+        0.2,0.2,0.2,
+        0.2,0.2,0.2,
+
+        0.0,0.5,0.0,
+        0.0,0.5,0.0,
+        0.0,0.5,0.0,
+        0.0,0.5,0.0,
+        ];
+        triColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, triColorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triVerticeColors), gl.STATIC_DRAW); 
+
+        colorLocatAttrib = gl.getAttribLocation(glProgram, "a_VertexColor");
+        gl.enableVertexAttribArray(colorLocatAttrib);
+        gl.bindBuffer(gl.ARRAY_BUFFER, triColorBuffer);
+        gl.vertexAttribPointer(colorLocatAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        var normals = new Float32Array([
+        //delante
+          0.0,0.0,1.0,  0.0,0.0,1.0,  0.0,0.0,1.0,  0.0,0.0,1.0,
+        //derecha
+          1.0,0.0,0.0,  1.0,0.0,0.0,  1.0,0.0,0.0,  1.0,0.0,0.0,
+        //detras
+          0.0,0.0,-1.0,  0.0,0.0,-1.0,  0.0,0.0,-1.0, 0.0,0.0,-1.0,
+        //izquierda
+          -1.0,0.0,0.0,  -1.0,0.0,0.0,  -1.0,0.0,0.0, -1.0,0.0,0.0,
+        //arriba
+          0.0,1.0,0.0,
+        //delante-derecha
+          1.0,0.0,1.0,  1.0,0.0,1.0,  1.0,0.0,1.0,  1.0,0.0,1.0,
+        //delante-izquierda
+          -1.0,0.0,1.0,  -1.0,0.0,1.0,  -1.0,0.0,1.0,  -1.0,0.0,1.0,
+        //detras-derecha
+          1.0,0.0,-1.0,  1.0,0.0,-1.0,  1.0,0.0,-1.0,  1.0,0.0,-1.0,
+        //detras-izquierda
+          -1.0,0.0,-1.0,  -1.0,0.0,-1.0,  -1.0,0.0,-1.0,  -1.0,0.0,-1.0,
+        //otras-arriba
+          -0.4,0.4,-0.8,  0.4,0.4,-0.8,//delante
+          -0.8,0.4,-0.4,  -0.8,0.4,-0.4,//derecha
+          -0.4,0.4,0.8,  0.4,0.4,0.8,//detras
+          0.8,0.4,-0.4,  0.8,0.4,-0.4,//izquierda
+        //pared
+          0.0,0.0,1.0,  0.0,0.0,1.0,  0.0,0.0,1.0,  0.0,0.0,1.0, 
+        //suelo
+          0.0,1.0,0.0,  0.0,1.0,0.0,  0.0,1.0,0.0,  0.0,1.0,0.0,
+  ]);
+        norm_Buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, norm_Buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW); 
+
+        normalLocat = gl.getAttribLocation(glProgram, "a_Normal");
+        gl.enableVertexAttribArray(normalLocat);
+        gl.bindBuffer(gl.ARRAY_BUFFER, norm_Buffer);
+        gl.vertexAttribPointer(normalLocat, 3, gl.FLOAT, false, 0, 0);
+
+        //Debajo intento de texturas.No funciona bien
+        /*cubeVertexTextureCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeVertexTextureCoordBuffer);
+        var textureCoords = [
+        //arriba
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+          0.2,0.0,
+          0.6,0.0,
+          0.4,0.4,
+        //delante
+          0.0,0.0,
+          1.0,0.0,
+          0.0,0.5,
+          0.0,0.5,
+          1.0,0.0,
+          1.0,0.5,
+        //derecha
+          0.0,0.0,
+          0.4,0.0,
+          0.0,0.2,
+          0.0,0.2,
+          0.4,0.0,
+          0.4,0.2,
+        //detras
+          0.0,0.0,
+          0.4,0.0,
+          0.0,0.2,
+          0.0,0.2,
+          0.4,0.0,
+          0.4,0.2,
+        //izquierda
+          0.0,0.0,
+          0.4,0.0,
+          0.0,0.2,
+          0.0,0.2,
+          0.4,0.0,
+          0.4,0.2,
+        //--------
+          0.0,0.0,//delante-derecha
+          0.4,0.0,
+          0.0,0.2,
+          0.0,0.2,
+          0.4,0.0,
+          0.4,0.2,
+          0.0,0.0,//delante-izquierda
+          0.4,0.0,
+          0.0,0.2,
+          0.0,0.2,
+          0.4,0.0,
+          0.4,0.2,
+          0.0,0.0,//detras-derecha
+          0.4,0.0,
+          0.0,0.2,
+          0.0,0.2,
+          0.4,0.0,
+          0.4,0.2,
+          0.0,0.0,//detras-izquierda
+          0.4,0.0,
+          0.0,0.2,
+          0.0,0.2,
+          0.4,0.0,
+          0.4,0.2,
+        ];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoords), gl.STATIC_DRAW);
+        cubeVertexTextureCoordBuffer.itemSize = 2;
+        cubeVertexTextureCoordBuffer.numItems = 72;*/
+      }//de la funcion
+
+
+      function drawScene(){
+
+        /*var textureCoordAttribute = gl.getAttribLocation(glProgram, "aTextureCoord");
+        var samplerUniform = gl.getUniformLocation(glProgram, "uSampler");
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, cubeVertexTextureCoordBuffer);
+        gl.vertexAttribPointer(textureCoordAttribute, 2, gl.FLOAT, false, 0, 0);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, neheTexture);
+        gl.uniform1i(samplerUniform, 0);*/
+
+        Matrix = mat4.create();
+        mat4.identity(Matrix);
+        
+        matRotx = mat4.create();
+        mat4.identity(matRotx);
+        mat4.rotateX(matRotx,matRotx,anglexRad);
+        mat4.multiply(Matrix,Matrix,matRotx);
+        
+        matRoty = mat4.create();
+        mat4.identity(matRoty);
+        mat4.rotateY(matRoty,matRoty,angleyRad);
+        mat4.multiply(Matrix,Matrix,matRoty);
+        
+        matRotz = mat4.create();
+        mat4.identity(matRotz);
+        mat4.rotateZ(matRotz,matRotz,anglezRad);
+        mat4.multiply(Matrix,Matrix,matRotz);
+
+        matTra = mat4.create();
+        mat4.identity(matTra);
+        mat4.translate(matTra,matTra,translation);
+        mat4.multiply(Matrix,Matrix,matTra);
+
+        var escala=vec3.fromValues(0.5,0.5,0.5);
+
+        mat4.scale(Matrix,Matrix,escala);
+
+        matPer=mat4.create();
+        mat4.perspective(matPer,Math.PI/3,canvas.width/canvas.height,1,500);
+        //mat4.multiply(Matrix,Matrix,matPer);
+
+        //matLook=mat4.create();
+        //mat4.lookAt(matLook,[0,0,-2.0],[0,0,10],[0,0,0]);
+        //mat4.multiply(Matrix,Matrix,matLook);
+
+        matMv=mat4.create();
+        mat4.identity(matMv);
+        mat4.translate(matMv,matMv, [0, 0, -2.0]);
+
+        uPerspective = gl.getUniformLocation(glProgram, "uPerspective");
+        uMovement = gl.getUniformLocation(glProgram, "uMovement");
+        gl.uniformMatrix4fv(uPerspective, false, matPer);
+        gl.uniformMatrix4fv(uMovement, false, matMv);
+
+        uMatrix =gl.getUniformLocation(glProgram, 'uMatrix');
+        gl.uniformMatrix4fv(uMatrix,false,Matrix);
+
+        gl.drawElements(gl.TRIANGLES, IndexVerticeBuffer.number_vertex_points,gl.UNSIGNED_SHORT,0);
+      }
+      function updateTranslation(){
+        var transx=(tx.value/10.0)-1;
+        var transy=(ty.value/10.0)-1;
+        var transz=(tz.value/10.0)-1;
+        vec3.set(translation,transx,transy,transz);
+        drawScene();
+      }
+      function updateRotationX(){
+        anglexRad=(Math.PI*anglex.value)/180.0;
+        drawScene();
+      }
+      function updateRotationY(){
+        angleyRad=(Math.PI*angley.value)/180.0;
+        drawScene();
+      }
+      function updateRotationZ(){
+        anglezRad=(Math.PI*anglez.value)/180.0;
+        drawScene();
+      }
+      function handleLoadedTexture(texture) {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+
+
+    var neheTexture;
+
+    function initTexture() {
+        neheTexture = gl.createTexture();
+        neheTexture.image = new Image();
+        neheTexture.image.onload = function () {
+            handleLoadedTexture(neheTexture)
+        }
+
+        neheTexture.image.src = "granito.gif";
+    }
+      
+
+
+</script>
+<!-- ****************   VERTEX SHADER *******************-->
+<script id="vertex-shader" type="x-shader/x-vertex">
+
+attribute vec3 a_VertexPosition;
+attribute vec3 a_VertexColor;
+//attribute vec2 aTextureCoord;
+  
+  attribute vec3 a_Normal;
+  uniform vec3 u_LightColor;     // Color luz difusa
+  uniform vec3 u_LightDirection;// Direccion luz difusa
+  varying vec3 u_ambientColor;// Color luz ambiente
+  varying vec3 u_specColor;// Color luz especular
+  varying vec3 u_vectorSpec;// Direccion luz especular. Vector entre el punto emisor de luz y el punto pasado.
+
+varying highp vec4 vColor;
+//varying vec2 vTextureCoord;
+uniform mat4 uMatrix,uMovement,uPerspective;
+
+void main() {
+
+  u_ambientColor= vec3(1.0,1.0,1.0);
+  u_specColor= vec3(1.0,1.0,1.0);
+  u_vectorSpec= a_VertexPosition-vec3(-1.5,0.6,0.0);
+  vec3 normal = normalize(a_Normal.xyz);
+  float nDotL = max(dot(u_LightDirection, normal), 0.0);
+  float nDotS = max(dot(normal,-u_vectorSpec), 0.0);
+  
+  vec3 diffuse = 0.5*u_LightColor * a_VertexColor * nDotL+0.2*u_ambientColor*a_VertexColor+0.3*u_specColor * a_VertexColor * nDotS;
+
+   gl_Position=vec4(uPerspective*uMovement*uMatrix*vec4(a_VertexPosition,1.0));
+   gl_PointSize=10.0;  //TAMAÑO DEL PUNTO
+   vColor= vec4(diffuse,1.0);
+   //vTextureCoord = aTextureCoord;
+}
+</script>
+<!-- ****************   FRAGMENT SHADER *******************-->
+<script id="fragment-shader" type="x-shader/x-fragment">
+varying  highp vec4 vColor;
+/*precision mediump float;
+
+    varying vec2 vTextureCoord;
+
+    uniform sampler2D uSampler;*/
+
+void main() {
+   gl_FragColor = vColor;
+   //gl_FragColor = vColor*texture2D(uSampler, vTextureCoord);
+}
+</script>
+<style type="text/css"></style></head>
+<body onload="initWebGL()">
+<canvas id="canvas" width="500" height="500"></canvas>
+<div>
+  X:<input type="range" id="x" oninput="updateTranslation()" min="0" max="20" value="10">
+  Y:<input type="range" id="y" oninput="updateTranslation()" min="0" max="20" value="10">
+  Z:<input type="range" id="z" oninput="updateTranslation()" min="0" max="20" value="10">
+  Rotar x:<input type="range" id="anglex" oninput="updateRotationX()" min="-360" max="360" value="0">
+  Rotar y:<input type="range" id="angley" oninput="updateRotationY()" min="-360" max="360" value="0">
+  Rotar z:<input type="range" id="anglez" oninput="updateRotationZ()" min="-360" max="360" value="0">
+</div>
+
+
+
+
+</body></html>

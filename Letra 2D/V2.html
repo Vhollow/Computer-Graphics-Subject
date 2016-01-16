@@ -1,0 +1,236 @@
+<html><head>
+<meta charset="utf-8">
+<title>WebGL - Letra</title>
+<style>
+        body{ background-color: grey; }
+      canvas{ background-color: white;
+              border: 1px solid black; }
+
+</style>
+<script src="./glMatrix/dist/gl-matrix-min.js"></script>
+<script>
+
+  // ****************** Variables Globales
+  var   gl = null,
+        canvas = null,
+        glProgram = null,
+        fragmentShader = null,
+        vertexShader = null;
+  var   positionLocatAttrib =null,
+        colorLocation = null,
+        colorLocatAttrib = null,
+        triColorBuffer =null,
+        triVerticeBuffer = null,
+        traslacionLocat = null,
+        IndexVerticeBuffer = null;
+  var tx,ty;
+  var translation=[0.0,0.0];
+  var angle=0.0;
+  var angleRad=0.0;
+  var matTra,matRot;
+  var Matrix;
+  var uMatrix;
+        
+
+      
+/********************* 1. INIT WEBGL **************************************/ 
+      function initWebGL()
+      {
+        canvas = document.getElementById("canvas");  
+        
+        //gl = canvas.getContext("webgl");          
+        gl = canvas.getContext("webgl");
+                
+        if(gl)
+        {
+          setupWebGL();
+          initShaders();
+          setupBuffersAndDraw();
+          drawScene();  
+        } 
+        else{  
+          alert(  "El navegador no soporta WEBGL.");
+        }
+      }
+      /********************* 2.setupWEBGL **************************************/ 
+      function setupWebGL()
+      {
+        tx= document.getElementById("x");
+        ty= document.getElementById("y");
+        angle=document.getElementById("angle");
+        //Pone el color de fondo a verde ---para 2d no funciona
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);  
+        gl.clear(gl.COLOR_BUFFER_BIT);  
+        
+        //Crea un viewport del tamaño del canvas
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+      /********************* 3. INIT SHADER **************************************/ 
+      function initShaders()
+      {
+       // Esta función inicializa los shaders
+       
+        //1.Obtengo la referencia de los shaders 
+        var fs_source = document.getElementById('fragment-shader').innerHTML;
+        var vs_source = document.getElementById('vertex-shader').innerHTML;
+
+        //2. Compila los shaders  
+        vertexShader = makeShader(vs_source, gl.VERTEX_SHADER);
+        fragmentShader = makeShader(fs_source, gl.FRAGMENT_SHADER);
+        
+          ///3. Crea un programa
+          glProgram = gl.createProgram();
+        
+        //4. Adjunta al programa cada shader
+          gl.attachShader(glProgram, vertexShader);
+          gl.attachShader(glProgram, fragmentShader);
+          gl.linkProgram(glProgram);
+
+        if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) {
+           alert("No se puede inicializar el Programa .");
+          }
+        
+        //5. Usa el programa
+        gl.useProgram(glProgram);
+      }
+     /********************* 3.1. MAKE SHADER **************************************/ 
+      function makeShader(src, type)
+      {
+        //Compila cada  shader
+        var shader = gl.createShader(type);
+        gl.shaderSource(shader, src);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+              alert("Error de compilación del shader: " + gl.getShaderInfoLog(shader));
+          }
+        return shader;
+      }
+
+     /********************* 4 SETUP BUFFERS  **************************************/ 
+      function setupBuffersAndDraw()
+      {  
+          var triVertices = [ 
+          //left triangle 
+          -0.7,0.8,
+          -0.1,-0.8,
+          -0.5,0.8,
+          0.1,-0.8,
+          0.7,0.8,
+          0.5,0.8,
+        ];
+       triVerticeBuffer = gl.createBuffer();
+       gl.bindBuffer(gl.ARRAY_BUFFER, triVerticeBuffer);
+       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triVertices), gl.STATIC_DRAW); 
+
+        var caras=[
+          0,1,2,
+          2,1,3,
+          5,1,3,
+          4,5,3,
+        ];
+
+        //BUFFER PARA POSICIONES
+       IndexVerticeBuffer = gl.createBuffer();
+       IndexVerticeBuffer.number_vertex_points=caras.length;
+       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexVerticeBuffer);
+       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(caras), gl.STATIC_DRAW); 
+
+/* +++++++++++++++++++++++++ 
+        **BUFFER PARA ATRIBUTO POSICION DE VERTICES
+        */
+        //Busca dónde debe ir la posicion de los vértices en el programa.
+        positionLocatAttrib = gl.getAttribLocation(glProgram, "a_VertexPosition");
+        gl.enableVertexAttribArray(positionLocatAttrib);
+        gl.bindBuffer(gl.ARRAY_BUFFER, triVerticeBuffer);
+        gl.vertexAttribPointer(positionLocatAttrib, 2, gl.FLOAT, false, 0, 0);
+        //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, IndexVerticeBuffer);
+
+        var triVerticeColors = [ 
+          
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 0.0,
+        ];
+      //OTRO BUFFER
+        triColorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, triColorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triVerticeColors), gl.STATIC_DRAW); 
+
+        colorLocatAttrib = gl.getAttribLocation(glProgram, "a_VertexColor");
+        gl.enableVertexAttribArray(colorLocatAttrib);
+        gl.bindBuffer(gl.ARRAY_BUFFER, triColorBuffer);
+        gl.vertexAttribPointer(colorLocatAttrib, 3, gl.FLOAT, false, 0, 0);
+      }//de la funcion
+      function drawScene(){
+        Matrix = mat3.create();
+        matTra = mat3.create();
+        mat3.identity(Matrix);
+        mat3.identity(matTra);
+        mat3.translate(matTra,matTra,translation);
+        mat3.multiply(Matrix,Matrix,matTra);
+        matRot = mat3.create();
+        mat3.identity(matRot);
+        mat3.rotate(matRot,matRot,angleRad);
+        mat3.multiply(Matrix,Matrix,matRot);
+
+
+        uMatrix =gl.getUniformLocation(glProgram, 'uMatrix');
+        gl.uniformMatrix3fv(uMatrix,false,Matrix);
+
+        gl.drawElements(gl.TRIANGLES, IndexVerticeBuffer.number_vertex_points,gl.UNSIGNED_SHORT,0);
+      }
+      function updateTranslation(){
+        var transx=(tx.value/10.0)-1;
+        var transy=(ty.value/10.0)-1;
+        vec2.set(translation,transx,transy);
+        drawScene();
+      }
+      function updateRotation(){
+        angleRad=(Math.PI*angle.value)/180.0;
+        drawScene();
+      }
+
+
+</script>
+<!-- ****************   VERTEX SHADER *******************-->
+<script id="vertex-shader" type="x-shader/x-vertex">
+
+attribute vec2 a_VertexPosition;
+attribute vec3 a_VertexColor;
+
+varying highp vec4 vColor;
+uniform mat3 uMatrix;
+void main() {
+  
+  //AHORA SOLO LE AÑADO LAS COORDENADAS
+   vec3 pos3=uMatrix*vec3(a_VertexPosition,1.0);
+   gl_Position=vec4(pos3,1.0);
+   gl_PointSize=10.0;  //TAMAÑO DEL PUNTO
+   vColor= vec4(a_VertexColor,1.0);
+}
+</script>
+<!-- ****************   FRAGMENT SHADER *******************-->
+<script id="fragment-shader" type="x-shader/x-fragment">
+varying  highp vec4 vColor;
+
+void main() {
+   gl_FragColor = vColor;
+}
+</script>
+<style type="text/css"></style></head>
+<body onload="initWebGL()">
+<canvas id="canvas" width="500" height="500"></canvas>
+<div>
+  X:<input type="range" id="x" oninput="updateTranslation()" min="0" max="20" value="10">
+  Y:<input type="range" id="y" oninput="updateTranslation()" min="0" max="20" value="10">
+  Angle:<input type="range" id="angle" oninput="updateRotation()" min="0" max="360" value="0">
+</div>
+
+
+
+
+</body></html>
